@@ -104,7 +104,6 @@ async function enqueue(tab, item, present = 'inpage') {
         queue[key].push(full);
         await saveQueue(queue);
     }
-    await updateQueueBadge(tab.id);
     console.log('[JDrop] enqueued', full.type, 'for tab', tab.id, '- present:', present);
     // CNL comes from hostile hoster pages that rewrite/navigate themselves and
     // would destroy an in-page overlay, so present it in a separate window.
@@ -144,7 +143,6 @@ async function removeFromQueue(tabId, itemId) {
         queue[key] = queue[key].filter((it) => it.id !== itemId);
         await saveQueue(queue);
     }
-    await updateQueueBadge(tabId);
 }
 
 async function clearTabQueue(tabId, reason = '') {
@@ -154,33 +152,16 @@ async function clearTabQueue(tabId, reason = '') {
         delete queue[String(tabId)];
         await saveQueue(queue);
     }
-    await updateQueueBadge(tabId);
 }
 
-// Per-tab badge showing how many links/CNL packages are queued for that tab.
-// Uses chrome.action's per-tab badge override, which only affects this tab -
-// other tabs keep showing the extension's default (empty) badge.
-async function updateQueueBadge(tabId) {
-    if (tabId === undefined || tabId === null || tabId < 0) return;
-    try {
-        const count = (await getTabQueue(tabId)).length;
-        if (count > 0) {
-            await chrome.action.setBadgeText({ text: String(count), tabId });
-            await chrome.action.setBadgeBackgroundColor({ color: '#2f6fed', tabId });
-        } else {
-            await chrome.action.setBadgeText({ text: '', tabId });
-        }
-    } catch {
-        // Tab may already be gone - nothing to update.
-    }
-}
-
-// Briefly flash a confirmation on the badge (used by auto-send), then revert
-// to the normal queue-count badge for that tab.
+// Briefly flash a confirmation on the toolbar badge (used by auto-send, since
+// there's no panel to confirm anything happened), then clear it.
 function flashBadge(tabId, text, color, ms = 1500) {
     chrome.action.setBadgeText({ text, tabId }).catch(() => {});
     chrome.action.setBadgeBackgroundColor({ color, tabId }).catch(() => {});
-    setTimeout(() => updateQueueBadge(tabId), ms);
+    setTimeout(() => {
+        chrome.action.setBadgeText({ text: '', tabId }).catch(() => {});
+    }, ms);
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
