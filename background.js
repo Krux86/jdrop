@@ -455,6 +455,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sendResponse({ ok: true });
                 break;
             }
+            case 'settings:setRememberedEmail': {
+                const settings = await loadSettings();
+                settings.rememberedEmail = msg.value || '';
+                await saveSettings(settings);
+                sendResponse({ ok: true });
+                break;
+            }
             case 'panel:getDefaults': {
                 const settings = await loadSettings();
                 sendResponse({

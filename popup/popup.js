@@ -65,11 +65,13 @@ $('login-form').addEventListener('submit', async (e) => {
     err.hidden = true;
     btn.disabled = true;
     btn.textContent = 'Connecting…';
-    const res = await send({ type: 'popup:login', email: $('email').value.trim(), password: $('password').value });
+    const emailValue = $('email').value.trim();
+    const res = await send({ type: 'popup:login', email: emailValue, password: $('password').value });
     btn.disabled = false;
     btn.textContent = 'Connect';
     if (res && res.ok) {
-        showConnected($('email').value.trim(), res.devices);
+        send({ type: 'settings:setRememberedEmail', value: $('opt-remember-email').checked ? emailValue : '' });
+        showConnected(emailValue, res.devices);
     } else {
         err.textContent = 'Login failed: ' + ((res && res.error) || 'unknown error');
         err.hidden = false;
@@ -101,6 +103,17 @@ async function initTheme() {
     });
 }
 
+// Remember-email pre-fill (login form)
+async function initRememberEmail() {
+    const res = await send({ type: 'settings:get' });
+    const remembered = (res && res.settings && res.settings.rememberedEmail) || '';
+    if (remembered) {
+        $('email').value = remembered;
+        $('opt-remember-email').checked = true;
+    }
+    // Else: leave the checkbox at its HTML default (checked) and the field empty.
+}
+
 // Auto-send setting
 async function initAutoSendSetting() {
     const checkbox = $('opt-autosend');
@@ -114,6 +127,7 @@ async function initAutoSendSetting() {
 // Initial state
 (async () => {
     initTheme();
+    initRememberEmail();
     initAutoSendSetting();
     const status = await send({ type: 'popup:status' });
     if (status && status.connected) {
