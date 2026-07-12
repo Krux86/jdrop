@@ -147,3 +147,4 @@ footer.foot {
     border-top: 1px solid var(--border);
 }
 footer.foot .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.disclaimer { font-size: 10px; color: var(--muted); opacity: .7; text-align: center; margin: 8px 0 0; }
