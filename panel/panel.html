@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="panel.css">
+    <title>JDrop — Add links</title>
+</head>
+<body>
+    <div class="card">
+        <header>
+            <h1>Send to JDownloader</h1>
+            <button id="close-btn" class="icon" title="Close">✕</button>
+        </header>
+
+        <ul id="items" class="items"></ul>
+
+        <div class="controls">
+            <label>Device
+                <select id="device"></select>
+            </label>
+            <details>
+                <summary>Options</summary>
+                <label>Package name <input type="text" id="opt-package" placeholder="(auto)"></label>
+                <label>Download password <input type="text" id="opt-password" placeholder="(none)"></label>
+                <label>Destination folder <input type="text" id="opt-folder" placeholder="(default)"></label>
+                <label class="checkbox"><input type="checkbox" id="opt-autostart"> Start download immediately</label>
+            </details>
+        </div>
+
+        <p class="status" id="status" hidden></p>
+
+        <footer>
+            <button id="clear-btn" class="secondary">Clear</button>
+            <button id="send-btn">Send</button>
+        </footer>
+    </div>
+
+    <script src="../lib/theme.js"></script>
+    <script src="panel.js"></script>
+</body>
+</html>

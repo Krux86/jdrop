@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="popup.css">
+    <title>JDrop</title>
+</head>
+<body>
+    <header>
+        <h1>JDrop</h1>
+        <span class="badge" id="status-badge">…</span>
+    </header>
+
+    <!-- Login view -->
+    <section id="login-view" hidden>
+        <p class="hint">Sign in with your MyJDownloader account.</p>
+        <form id="login-form">
+            <label>Email
+                <input type="email" id="email" autocomplete="username" required>
+            </label>
+            <label>Password
+                <input type="password" id="password" autocomplete="current-password" required>
+            </label>
+            <button type="submit" id="login-btn">Connect</button>
+        </form>
+        <p class="error" id="login-error" hidden></p>
+        <p class="signup-hint">No MyJDownloader account yet? <a href="https://my.jdownloader.org/login.html" target="_blank" rel="noopener">Register for free →</a></p>
+    </section>
+
+    <!-- Connected view -->
+    <section id="connected-view" hidden>
+        <p class="account">Connected as <strong id="account-email"></strong></p>
+        <h2>Devices</h2>
+        <ul id="device-list" class="devices"></ul>
+        <p class="error" id="device-error" hidden></p>
+        <div class="row">
+            <button id="refresh-btn" class="secondary">Refresh</button>
+            <button id="logout-btn" class="secondary">Log out</button>
+        </div>
+    </section>
+
+    <footer class="foot">
+        <span class="label">Theme</span>
+        <div class="theme-toggle" id="theme-toggle" role="group" aria-label="Theme">
+            <button data-theme-value="auto" type="button">Auto</button>
+            <button data-theme-value="light" type="button">Light</button>
+            <button data-theme-value="dark" type="button">Dark</button>
+        </div>
+    </footer>
+
+    <script src="../lib/theme.js"></script>
+    <script src="popup.js"></script>
+</body>
+</html>

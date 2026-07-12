@@ -1,0 +1,6 @@
+{
+  "extension_description": {
+    "message": "Send links and Click'N'Load to your JDownloader via the MyJDownloader cloud — works with a remote/Docker JDownloader.",
+    "description": "Extension description shown in the browser's extension manager."
+  }
+}

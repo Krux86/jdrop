@@ -1,0 +1,472 @@
+// JDrop — service worker (MV3, ES module).
+//
+// Ties together: context menu -> per-tab link queue -> in-page panel -> cloud
+// API. CNL requests to a (possibly unreachable) local JDownloader are faked at
+// the network layer and their payload is rerouted through the same panel/device
+// flow. All crypto/API logic lives in lib/*; this file is orchestration only.
+
+import { MyJDApi } from './lib/api.js';
+import { cnlToAddLinksQuery, hasForwardablePayload } from './lib/cnl.js';
+import {
+    loadSession, saveSession, clearSession,
+    loadSettings, saveSettings, DEFAULT_SETTINGS,
+    loadQueue, saveQueue,
+} from './lib/storage.js';
+
+// ---- API instance (rehydrated from storage on each worker wake) ----
+
+let apiPromise = null;
+async function getApi() {
+    if (!apiPromise) {
+        apiPromise = (async () => {
+            const session = await loadSession();
+            const api = new MyJDApi({ session });
+            // Persist refreshed tokens whenever the client transparently reconnects.
+            api.onSessionRefreshed = (s) => saveSession(s);
+            return api;
+        })();
+    }
+    return apiPromise;
+}
+
+async function persistSession(api) {
+    if (api.session) await saveSession(api.session);
+    else await clearSession();
+}
+
+// ---- context menu ----
+
+const MENU_ID = 'jdrop-send';
+
+async function setupContextMenu() {
+    const settings = await loadSettings();
+    await chrome.contextMenus.removeAll();
+    if (settings.contextMenu) {
+        chrome.contextMenus.create({
+            id: MENU_ID,
+            title: 'Send to JDownloader',
+            contexts: ['link', 'page', 'selection', 'image', 'video', 'audio'],
+        });
+    }
+}
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+    if (!tab || tab.id === undefined) return;
+    const url = info.linkUrl || info.srcUrl || info.selectionText || info.pageUrl || tab.url;
+    if (!url) return;
+    enqueue(tab, {
+        type: 'link',
+        title: tab.title || url,
+        content: url,
+        sourceUrl: tab.url,
+    });
+});
+
+// ---- per-tab request queue ----
+
+async function enqueue(tab, item, present = 'inpage') {
+    const queue = await loadQueue();
+    const key = String(tab.id);
+    if (!queue[key]) queue[key] = [];
+
+    const full = {
+        id: `${tab.id}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`,
+        time: Date.now(),
+        favIconUrl: tab.favIconUrl || '',
+        ...item,
+    };
+
+    // De-dupe identical entries.
+    const dupe = queue[key].some(
+        (it) => it.type === full.type && JSON.stringify(it.content) === JSON.stringify(full.content)
+    );
+    if (!dupe) {
+        queue[key].push(full);
+        await saveQueue(queue);
+    }
+    console.log('[JDrop] enqueued', full.type, 'for tab', tab.id, '- present:', present);
+    // CNL comes from hostile hoster pages that rewrite/navigate themselves and
+    // would destroy an in-page overlay, so present it in a separate window.
+    if (present === 'window') await openPanelWindow(tab.id);
+    else await openPanel(tab.id);
+}
+
+async function getTabQueue(tabId) {
+    const queue = await loadQueue();
+    return queue[String(tabId)] || [];
+}
+
+async function removeFromQueue(tabId, itemId) {
+    const queue = await loadQueue();
+    const key = String(tabId);
+    if (queue[key]) {
+        queue[key] = queue[key].filter((it) => it.id !== itemId);
+        await saveQueue(queue);
+    }
+}
+
+async function clearTabQueue(tabId, reason = '') {
+    const queue = await loadQueue();
+    if (queue[String(tabId)]) {
+        console.log('[JDrop] clearing queue for tab', tabId, reason ? '(' + reason + ')' : '');
+        delete queue[String(tabId)];
+        await saveQueue(queue);
+    }
+}
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+    // A CNL capture often originates from a short-lived popunder tab that the
+    // hoster closes moments later. If a standalone panel window is still showing
+    // this tab's captures, keep the queue so the user can send when ready.
+    if (panelWindows[tabId] !== undefined) {
+        console.log('[JDrop] tab', tabId, 'closed but its panel window is open — keeping queue');
+        return;
+    }
+    clearTabQueue(tabId, 'tab closed');
+});
+
+// ---- in-page panel ----
+
+async function openPanel(tabId) {
+    const openMsg = { type: 'panel:open', tabId };
+    try {
+        await chrome.tabs.sendMessage(tabId, openMsg);
+        console.log('[JDrop] panel:open delivered to tab', tabId);
+    } catch {
+        // Content script not present yet — inject it, then retry.
+        try {
+            await chrome.scripting.executeScript({ target: { tabId }, files: ['content/panel-host.js'] });
+            await chrome.tabs.sendMessage(tabId, openMsg);
+            console.log('[JDrop] panel:open delivered after injecting host into tab', tabId);
+        } catch (e) {
+            console.error('[JDrop] could not open panel in tab', tabId, e);
+        }
+    }
+}
+
+// A standalone panel window, immune to the host page navigating or rewriting
+// itself. Reused per source tab so repeated CNL captures focus the same window.
+const panelWindows = {}; // tabId -> windowId
+
+async function openPanelWindow(tabId) {
+    const existing = panelWindows[tabId];
+    if (existing !== undefined) {
+        try {
+            await chrome.windows.update(existing, { focused: true, drawAttention: true });
+            console.log('[JDrop] focused existing panel window for tab', tabId);
+            return;
+        } catch {
+            delete panelWindows[tabId]; // window was closed — fall through and recreate
+        }
+    }
+    try {
+        // Rough initial height from the queue length; the panel fine-tunes it
+        // to its real content once loaded (see the 'panel:resize' handler).
+        const count = (await getTabQueue(tabId)).length;
+        const initialHeight = Math.max(260, Math.min(680, 260 + Math.min(count, 6) * 46));
+        const url = chrome.runtime.getURL('panel/panel.html') + '?tabId=' + tabId + '&popup=1';
+        const win = await chrome.windows.create({ url, type: 'popup', width: 360, height: initialHeight, focused: true });
+        panelWindows[tabId] = win.id;
+        console.log('[JDrop] opened panel window', win.id, 'for tab', tabId);
+    } catch (e) {
+        console.error('[JDrop] could not open panel window for tab', tabId, e);
+    }
+}
+
+chrome.windows.onRemoved.addListener((windowId) => {
+    for (const [tabId, id] of Object.entries(panelWindows)) {
+        if (id === windowId) {
+            delete panelWindows[tabId];
+            // The window is gone — its captures are no longer actionable, clean up.
+            clearTabQueue(tabId, 'panel window closed');
+        }
+    }
+});
+
+// ---- CNL network-layer faking (declarativeNetRequest) ----
+
+const CNL_RULE_IDS = [1, 2, 3, 4, 5, 6];
+const CNL_RESOURCE_TYPES = ['sub_frame', 'xmlhttprequest', 'script', 'ping', 'other', 'object', 'media', 'image'];
+
+function dataUrl(mime, content) {
+    return `data:${mime};charset=utf-8,` + encodeURIComponent(content);
+}
+
+const CNL_JDCHECK = 'var jdownloader = true;\nvar jdownloaderVersion = "9.9.9";';
+const CNL_CROSSDOMAIN = '<?xml version="1.0"?>\n<cross-domain-policy>\n  <allow-access-from domain="*"/>\n</cross-domain-policy>';
+
+function cnlRules() {
+    const jd = { type: 'redirect', redirect: { url: dataUrl('text/javascript', CNL_JDCHECK) } };
+    const xml = { type: 'redirect', redirect: { url: dataUrl('text/xml', CNL_CROSSDOMAIN) } };
+    const ok = { type: 'redirect', redirect: { url: dataUrl('text/plain', 'success') } };
+    const cond = (filter) => ({ urlFilter: filter, resourceTypes: CNL_RESOURCE_TYPES });
+    return [
+        { id: 1, priority: 1, action: jd, condition: cond('*://localhost:9666/jdcheck.js*') },
+        { id: 2, priority: 1, action: jd, condition: cond('*://127.0.0.1:9666/jdcheck.js*') },
+        { id: 3, priority: 1, action: xml, condition: cond('*://localhost:9666/crossdomain.xml*') },
+        { id: 4, priority: 1, action: xml, condition: cond('*://127.0.0.1:9666/crossdomain.xml*') },
+        { id: 5, priority: 1, action: ok, condition: cond('*://localhost:9666/flash/add*') },
+        { id: 6, priority: 1, action: ok, condition: cond('*://127.0.0.1:9666/flash/add*') },
+    ];
+}
+
+async function enableCnl() {
+    try {
+        await chrome.declarativeNetRequest.updateSessionRules({
+            removeRuleIds: CNL_RULE_IDS,
+            addRules: cnlRules(),
+        });
+        console.log('[JDrop] CNL redirect rules active');
+    } catch (e) {
+        console.error('[JDrop] enableCnl failed:', e);
+    }
+}
+async function disableCnl() {
+    try {
+        await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: CNL_RULE_IDS });
+    } catch (e) {
+        console.error('[JDrop] disableCnl failed:', e);
+    }
+}
+
+// ---- CNL payload capture (webRequest, observational) ----
+
+function parseCnlBody(details) {
+    const form = {};
+    if (details.requestBody) {
+        if (details.requestBody.formData) {
+            for (const [k, v] of Object.entries(details.requestBody.formData)) form[k] = v[0];
+            return form;
+        }
+        if (details.requestBody.raw && details.requestBody.raw.length) {
+            try {
+                const decoder = new TextDecoder('utf-8');
+                const raw = details.requestBody.raw.map((c) => (c.bytes ? decoder.decode(c.bytes) : '')).join('');
+                const params = new URLSearchParams(raw);
+                let any = false;
+                for (const [k, v] of params.entries()) { form[k] = v; any = true; }
+                if (any) return form;
+            } catch (e) {
+                console.warn('JDrop: failed to decode CNL POST body', e);
+            }
+        }
+    }
+    try {
+        const u = new URL(details.url);
+        let any = false;
+        for (const [k, v] of u.searchParams.entries()) { form[k] = v; any = true; }
+        if (any) return form;
+    } catch { /* ignore */ }
+    return null;
+}
+
+chrome.webRequest.onBeforeRequest.addListener(
+    (details) => {
+        console.log('[JDrop] webRequest saw CNL request:', details.url, 'tab', details.tabId);
+        const form = parseCnlBody(details);
+        if (!hasForwardablePayload(form)) {
+            console.log('[JDrop] …no forwardable payload (crypted/dlc/urls), skipping');
+            return;
+        }
+        if (details.tabId < 0) return;
+        chrome.tabs.get(details.tabId, (tab) => {
+            if (chrome.runtime.lastError || !tab) return;
+            enqueue(tab, {
+                type: 'cnl',
+                title: (form.package && (Array.isArray(form.package) ? form.package[0] : form.package)) || tab.title || 'CNL',
+                content: { formData: form, sourceUrl: details.documentUrl || details.initiator || tab.url },
+                sourceUrl: tab.url,
+            }, 'window');
+        });
+    },
+    { urls: ['http://127.0.0.1:9666/flash/*', 'http://localhost:9666/flash/*'] },
+    ['requestBody']
+);
+
+// ---- sending ----
+
+function buildQuery(item, options) {
+    let query;
+    if (item.type === 'cnl') {
+        query = cnlToAddLinksQuery(item.content.formData, { sourceUrl: item.content.sourceUrl });
+    } else {
+        query = { links: item.content };
+        if (item.sourceUrl) query.sourceUrl = item.sourceUrl;
+    }
+    if (options.packageName) query.packageName = options.packageName;
+    if (options.downloadPassword) query.downloadPassword = options.downloadPassword;
+    if (options.destinationFolder) query.destinationFolder = options.destinationFolder;
+    if (options.autostart !== undefined) query.autostart = options.autostart;
+    return query;
+}
+
+async function sendItems({ tabId, deviceId, options }) {
+    const api = await getApi();
+    if (!api.isConnected()) return { ok: false, error: 'not_connected' };
+
+    const items = await getTabQueue(tabId);
+    if (items.length === 0) return { ok: false, error: 'empty' };
+
+    try {
+        for (const item of items) {
+            const query = buildQuery(item, options);
+            console.log('[JDrop] addLinks ->', deviceId, query);
+            await api.addLinks(deviceId, query);
+        }
+        await clearTabQueue(tabId);
+        console.log('[JDrop] sent', items.length, 'item(s) OK');
+        return { ok: true, count: items.length };
+    } catch (e) {
+        console.error('[JDrop] send failed:', e);
+        if (e.needsLogin) { api.session = null; await clearSession(); }
+        return { ok: false, error: e.message, needsLogin: !!e.needsLogin };
+    }
+}
+
+// ---- message routing ----
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+    if (!msg || sender.id !== chrome.runtime.id) return false;
+    console.log('[JDrop] message:', msg.type);
+
+    (async () => {
+        switch (msg.type) {
+            case 'popup:status': {
+                const api = await getApi();
+                sendResponse({
+                    connected: api.isConnected(),
+                    email: api.session ? api.session.email : null,
+                });
+                break;
+            }
+            case 'popup:login': {
+                const api = await getApi();
+                try {
+                    await api.connect(msg.email, msg.password);
+                    await persistSession(api);
+                    const devices = await api.listDevices();
+                    console.log('[JDrop] login OK,', devices.length, 'device(s)');
+                    sendResponse({ ok: true, devices });
+                } catch (e) {
+                    console.error('[JDrop] login failed:', e);
+                    sendResponse({ ok: false, error: e.message });
+                }
+                break;
+            }
+            case 'popup:logout': {
+                const api = await getApi();
+                await api.disconnect();
+                await persistSession(api);
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'listDevices': {
+                const api = await getApi();
+                try {
+                    sendResponse({ ok: true, devices: await api.listDevices() });
+                } catch (e) {
+                    if (e.needsLogin) { api.session = null; await clearSession(); }
+                    sendResponse({ ok: false, error: e.message, needsLogin: !!e.needsLogin });
+                }
+                break;
+            }
+            case 'getTheme': {
+                const settings = await loadSettings();
+                sendResponse({ theme: settings.theme || 'auto' });
+                break;
+            }
+            case 'setTheme': {
+                const settings = await loadSettings();
+                settings.theme = msg.theme;
+                await saveSettings(settings);
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'cnl-captured': {
+                // MAIN-world interceptor path (complements the webRequest path).
+                const tab = sender.tab;
+                if (tab && hasForwardablePayload(msg.formData)) {
+                    const pkg = msg.formData.package;
+                    await enqueue(tab, {
+                        type: 'cnl',
+                        title: (Array.isArray(pkg) ? pkg[0] : pkg) || tab.title || 'CNL',
+                        content: { formData: msg.formData, sourceUrl: msg.sourceUrl || tab.url },
+                        sourceUrl: tab.url,
+                    }, 'window');
+                }
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'panel:resize': {
+                const winId = panelWindows[msg.tabId];
+                if (winId !== undefined && typeof msg.height === 'number') {
+                    const height = Math.max(240, Math.min(760, Math.round(msg.height)));
+                    chrome.windows.update(winId, { height }).catch(() => {});
+                }
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'panel:getQueue': {
+                sendResponse({ items: await getTabQueue(msg.tabId) });
+                break;
+            }
+            case 'panel:remove': {
+                await removeFromQueue(msg.tabId, msg.id);
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'panel:clear': {
+                await clearTabQueue(msg.tabId);
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'panel:close': {
+                // In-page overlay: tell the content script to remove the iframe.
+                chrome.tabs.sendMessage(msg.tabId, { type: 'panel:close' }).catch(() => {});
+                // Standalone window: close it if one is tracked for this tab.
+                const winId = panelWindows[msg.tabId];
+                if (winId !== undefined) {
+                    delete panelWindows[msg.tabId];
+                    chrome.windows.remove(winId).catch(() => {});
+                }
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'panel:send': {
+                sendResponse(await sendItems(msg));
+                break;
+            }
+            default:
+                sendResponse({ ok: false, error: 'unknown_action' });
+        }
+    })();
+
+    return true; // async sendResponse
+});
+
+// ---- settings changes ----
+
+chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !changes.myjd_settings) return;
+    const s = changes.myjd_settings.newValue || DEFAULT_SETTINGS;
+    setupContextMenu();
+    if (s.clickNLoad) enableCnl(); else disableCnl();
+});
+
+// ---- init ----
+
+async function init() {
+    try {
+        const settings = await loadSettings();
+        await setupContextMenu();
+        if (settings.clickNLoad) await enableCnl(); else await disableCnl();
+        console.log('[JDrop] service worker initialized');
+    } catch (e) {
+        console.error('[JDrop] init failed:', e);
+    }
+}
+
+chrome.runtime.onInstalled.addListener(init);
+chrome.runtime.onStartup.addListener(init);
+init();
+console.log('[JDrop] service worker loaded');

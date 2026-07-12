@@ -1,0 +1,152 @@
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --border: #dcdcdc;
+    --accent: #2f6fed;
+    --accent-fg: #ffffff;
+    --error: #c0392b;
+    --ok: #2e9e5b;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #1e1f22;
+        --fg: #eaeaea;
+        --muted: #9aa0a6;
+        --border: #3a3c40;
+        --accent: #4a86ff;
+        --error: #ff6b5e;
+        --ok: #46c07a;
+    }
+}
+
+/* Manual theme choice — overrides the media query in both directions. */
+:root[data-theme="light"] {
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --border: #dcdcdc;
+    --accent: #2f6fed;
+    --accent-fg: #ffffff;
+    --error: #c0392b;
+    --ok: #2e9e5b;
+}
+:root[data-theme="dark"] {
+    --bg: #1e1f22;
+    --fg: #eaeaea;
+    --muted: #9aa0a6;
+    --border: #3a3c40;
+    --accent: #4a86ff;
+    --accent-fg: #ffffff;
+    --error: #ff6b5e;
+    --ok: #46c07a;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+    font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    color: var(--fg);
+    background: transparent;
+}
+.card {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    overflow: hidden;
+}
+header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+}
+h1 { font-size: 14px; margin: 0; }
+.icon {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font-size: 15px;
+    cursor: pointer;
+    padding: 2px 6px;
+}
+
+.items {
+    list-style: none;
+    margin: 0;
+    padding: 8px;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 60px;
+}
+.items li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 8px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 6px;
+}
+.items .tag {
+    flex: none;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+    padding: 2px 6px;
+    border-radius: 999px;
+    background: var(--border);
+    color: var(--muted);
+}
+.items .tag.cnl { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.items .title {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.items .remove { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 14px; }
+.empty { color: var(--muted); font-style: italic; padding: 16px 8px; text-align: center; }
+
+.controls { padding: 8px 12px; border-top: 1px solid var(--border); }
+label { display: block; margin-bottom: 8px; font-size: 12px; color: var(--muted); }
+label.checkbox { display: flex; align-items: center; gap: 6px; }
+select, input[type=text] {
+    display: block;
+    width: 100%;
+    margin-top: 3px;
+    padding: 6px 8px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 13px;
+}
+input[type=checkbox] { margin: 0; }
+details summary { cursor: pointer; color: var(--muted); margin: 4px 0 8px; }
+
+.status { margin: 0; padding: 8px 12px; font-size: 12px; }
+.status.err { color: var(--error); }
+.status.ok { color: var(--ok); }
+
+footer {
+    display: flex;
+    gap: 8px;
+    padding: 10px 12px;
+    border-top: 1px solid var(--border);
+}
+footer button { flex: 1; padding: 8px; border: 0; border-radius: 8px; font-size: 13px; cursor: pointer; }
+#send-btn { background: var(--accent); color: var(--accent-fg); }
+.secondary { background: transparent; color: var(--fg); border: 1px solid var(--border) !important; }
+button:disabled { opacity: .6; cursor: default; }
+
+/* Standalone-window mode (CNL): size to content instead of filling a fixed
+   iframe, so the window can scale to the number of links. */
+html.win, html.win body { height: auto; min-height: 0; }
+html.win .card { height: auto; }
+html.win .items { flex: 0 1 auto; max-height: 260px; }

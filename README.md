@@ -1,0 +1,81 @@
+# JDrop (unofficial)
+
+A small, dependency-free browser extension (Chrome/Brave/Edge, Manifest V3) that
+sends links and **Click'N'Load** to your JDownloader through the public
+[MyJDownloader](https://my.jdownloader.org) cloud API — so it works even when
+JDownloader runs on a **different machine** (Docker, NAS, server), where classic
+`127.0.0.1:9666` Click'N'Load can't reach it.
+
+> **Unofficial.** This is an independent client for the public MyJDownloader
+> API. It is not affiliated with or endorsed by AppWork GmbH. "JDownloader" and
+> "MyJDownloader" are trademarks of AppWork GmbH.
+
+## Why it exists
+
+It's an independent reimplementation, informed by reading the official
+extension's source (for the wire protocol and the CNL forwarding technique —
+see License) and rewritten from scratch in modern vanilla JavaScript, without
+the Angular 1 / jQuery / RequireJS / CryptoJS stack. **No build step** and
+**no runtime dependencies**:
+
+- All cryptography uses the browser-native **Web Crypto API** (`crypto.subtle`).
+- The cloud API client runs **directly in the service worker** (`fetch` only) —
+  no offscreen document, no message hops.
+- Everything is ES modules you can read top-to-bottom.
+
+## Features (current)
+
+- Sign in with your MyJDownloader account; list online devices.
+- Right-click → **Send to JDownloader** for links, pages, selections, media.
+- **Click'N'Load** capture on hoster pages, forwarded to the selected device via
+  a `dummycnl.jdownloader.org` URL that JDownloader decrypts locally.
+- An in-page panel to pick the target device and options (package name,
+  download password, destination folder, autostart).
+
+Not included yet (deliberately — easy to add later thanks to the module split):
+CAPTCHA solving, clipboard observer, autograbber.
+
+## Install (unpacked)
+
+1. Open `chrome://extensions` (or `brave://extensions`, `edge://extensions`).
+2. Enable **Developer mode**.
+3. **Load unpacked** → select this project's folder.
+4. Click the toolbar icon, sign in, and you're ready.
+
+## Development
+
+This project was built with AI assistance ([Claude](https://claude.com/claude-code)),
+under human direction and review — the protocol implementation was verified against
+the official extension's source and a real MyJDownloader account before anything
+was considered done. See the tests below for how that verification is reproducible.
+
+No build, no `npm install`. Tests use Node's built-in runner (Node ≥ 18):
+
+```
+npm test        # or: node --test
+```
+
+The tests cross-check the Web Crypto implementation against Node's `node:crypto`
+and drive the API client against a fake MyJDownloader server that verifies every
+signature and decrypts every request body — so the handshake is proven correct,
+not just shaped right.
+
+### Layout
+
+| Path | Responsibility |
+|------|----------------|
+| `lib/crypto.js` | Web Crypto primitives + MyJD token derivation (pure, tested) |
+| `lib/api.js` | Cloud API client: connect, listDevices, addLinks (pure, tested) |
+| `lib/cnl.js` | Click'N'Load parsing + dummycnl encoding (pure, tested) |
+| `lib/storage.js` | `chrome.storage` wrappers |
+| `background.js` | Service worker: context menu, CNL faking, queue, routing |
+| `content/` | CNL interceptor (MAIN + bridge) and the panel host |
+| `popup/`, `panel/` | The two UIs |
+| `tests/` | `node --test` suites |
+
+## License
+
+Licensed under **GPL-3.0-or-later** (see `LICENSE`). This project reuses ideas
+and small portions of code from the GPLv3
+[MyJDownloader MV3 extension](https://github.com/magnetgrouplabs/myjdownloader-extension-mv3)
+(itself derived from AppWork GmbH's original), so it stays GPLv3.

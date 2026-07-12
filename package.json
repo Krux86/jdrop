@@ -1,0 +1,11 @@
+{
+  "name": "jdrop",
+  "version": "0.1.0",
+  "description": "JDrop — unofficial, dependency-free MyJDownloader browser extension (MV3).",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "GPL-3.0-or-later"
+}
