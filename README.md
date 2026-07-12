@@ -42,6 +42,24 @@ CAPTCHA solving, clipboard observer, autograbber.
 3. **Load unpacked** → select this project's folder.
 4. Click the toolbar icon, sign in, and you're ready.
 
+## Permissions
+
+The manifest requests broad host access (`<all_urls>`) and `webRequest`. Both
+are wide, so here's why:
+
+| Permission | Why it's needed |
+|------------|------------------|
+| `<all_urls>` + `webRequest` | Click'N'Load can be triggered from *any* hoster page, and the browser only lets an extension read a request's body (the encrypted CNL payload) if it has host access to the page that made it. Without this, CNL capture would silently fail on most sites. |
+| `declarativeNetRequest` | Fakes the local `jdcheck.js` / `crossdomain.xml` / `flash/add*` responses so hoster pages believe a local JDownloader answered — necessary since a real one usually isn't reachable (see "Why it exists"). |
+| `scripting` | Injects the in-page panel's content script into a tab on demand (context-menu "Send to JDownloader"). |
+| `contextMenus` | Adds the right-click "Send to JDownloader" entry. |
+| `storage` | Stores your (encrypted-token) session and settings locally — never your password, which is discarded right after deriving the login secrets. |
+
+Nothing here calls home anywhere except `api.jdownloader.org` (the official
+MyJDownloader cloud API) and whatever hoster page you're already on. Read
+`lib/api.js` and `background.js` end-to-end if you want to verify that yourself
+— that's the point of keeping this dependency-free and readable.
+
 ## Development
 
 This project was built with AI assistance ([Claude](https://claude.com/claude-code)),
