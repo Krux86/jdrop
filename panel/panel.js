@@ -91,6 +91,33 @@ function renderDevices(devices) {
         opt.textContent = d.name || d.id;
         sel.appendChild(opt);
     }
+    // Pre-select the device used last time, if it's still online.
+    if (panelDefaults.defaultDeviceId && devices.some((d) => d.id === panelDefaults.defaultDeviceId)) {
+        sel.value = panelDefaults.defaultDeviceId;
+    }
+    fitWindow();
+}
+
+let panelDefaults = { defaultDeviceId: null, rememberedOptions: {} };
+
+async function loadDefaults() {
+    const res = await send({ type: 'panel:getDefaults' });
+    panelDefaults = {
+        defaultDeviceId: res && res.defaultDeviceId,
+        rememberedOptions: (res && res.rememberedOptions) || {},
+    };
+}
+
+// Pre-fill the sticky options (autostart, destination folder) from last time.
+// packageName/downloadPassword are never remembered - those vary per item.
+function applyRememberedOptions() {
+    const { autostart, destinationFolder } = panelDefaults.rememberedOptions;
+    if (autostart) $('opt-autostart').checked = true;
+    if (destinationFolder) $('opt-folder').value = destinationFolder;
+    if (autostart || destinationFolder) {
+        const details = document.querySelector('.controls details');
+        if (details) details.open = true;
+    }
     fitWindow();
 }
 
@@ -147,6 +174,10 @@ $('send-btn').addEventListener('click', async () => {
     }
 });
 
-window.MyJDTheme.loadAndApply();
-loadQueue();
-loadDevices();
+(async () => {
+    window.MyJDTheme.loadAndApply();
+    await loadDefaults();
+    applyRememberedOptions();
+    loadQueue();
+    loadDevices();
+})();

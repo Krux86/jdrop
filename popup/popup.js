@@ -101,9 +101,20 @@ async function initTheme() {
     });
 }
 
+// Auto-send setting
+async function initAutoSendSetting() {
+    const checkbox = $('opt-autosend');
+    const res = await send({ type: 'settings:get' });
+    checkbox.checked = !!(res && res.settings && res.settings.autoSend);
+    checkbox.addEventListener('change', () => {
+        send({ type: 'settings:setAutoSend', value: checkbox.checked });
+    });
+}
+
 // Initial state
 (async () => {
     initTheme();
+    initAutoSendSetting();
     const status = await send({ type: 'popup:status' });
     if (status && status.connected) {
         showConnected(status.email, null);

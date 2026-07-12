@@ -62,9 +62,29 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     });
 });
 
+// ---- keyboard shortcut ----
+
+chrome.commands.onCommand.addListener(async (command) => {
+    if (command !== 'send-current-tab') return;
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab || tab.id === undefined || !tab.url) return;
+    enqueue(tab, {
+        type: 'link',
+        title: tab.title || tab.url,
+        content: tab.url,
+        sourceUrl: tab.url,
+    });
+});
+
 // ---- per-tab request queue ----
 
 async function enqueue(tab, item, present = 'inpage') {
+    // Auto-send (opt-in, off by default): skip the panel entirely and send
+    // straight to the remembered device with the remembered options. Falls
+    // through to the normal panel flow if not connected, no remembered device
+    // yet, or the send itself fails - so the user always has a way to recover.
+    if (await tryAutoSend(tab, item)) return;
+
     const queue = await loadQueue();
     const key = String(tab.id);
     if (!queue[key]) queue[key] = [];
@@ -84,11 +104,32 @@ async function enqueue(tab, item, present = 'inpage') {
         queue[key].push(full);
         await saveQueue(queue);
     }
+    await updateQueueBadge(tab.id);
     console.log('[JDrop] enqueued', full.type, 'for tab', tab.id, '- present:', present);
     // CNL comes from hostile hoster pages that rewrite/navigate themselves and
     // would destroy an in-page overlay, so present it in a separate window.
     if (present === 'window') await openPanelWindow(tab.id);
     else await openPanel(tab.id);
+}
+
+async function tryAutoSend(tab, item) {
+    const settings = await loadSettings();
+    if (!settings.autoSend || !settings.defaultDeviceId) return false;
+
+    const api = await getApi();
+    if (!api.isConnected()) return false;
+
+    try {
+        const query = buildQuery(item, settings.rememberedOptions || {});
+        console.log('[JDrop] auto-send ->', settings.defaultDeviceId, query);
+        await api.addLinks(settings.defaultDeviceId, query);
+        flashBadge(tab.id, '✓', '#2e9e5b');
+        console.log('[JDrop] auto-send OK');
+        return true;
+    } catch (e) {
+        console.error('[JDrop] auto-send failed, falling back to panel:', e);
+        return false;
+    }
 }
 
 async function getTabQueue(tabId) {
@@ -103,6 +144,7 @@ async function removeFromQueue(tabId, itemId) {
         queue[key] = queue[key].filter((it) => it.id !== itemId);
         await saveQueue(queue);
     }
+    await updateQueueBadge(tabId);
 }
 
 async function clearTabQueue(tabId, reason = '') {
@@ -112,6 +154,33 @@ async function clearTabQueue(tabId, reason = '') {
         delete queue[String(tabId)];
         await saveQueue(queue);
     }
+    await updateQueueBadge(tabId);
+}
+
+// Per-tab badge showing how many links/CNL packages are queued for that tab.
+// Uses chrome.action's per-tab badge override, which only affects this tab -
+// other tabs keep showing the extension's default (empty) badge.
+async function updateQueueBadge(tabId) {
+    if (tabId === undefined || tabId === null || tabId < 0) return;
+    try {
+        const count = (await getTabQueue(tabId)).length;
+        if (count > 0) {
+            await chrome.action.setBadgeText({ text: String(count), tabId });
+            await chrome.action.setBadgeBackgroundColor({ color: '#2f6fed', tabId });
+        } else {
+            await chrome.action.setBadgeText({ text: '', tabId });
+        }
+    } catch {
+        // Tab may already be gone - nothing to update.
+    }
+}
+
+// Briefly flash a confirmation on the badge (used by auto-send), then revert
+// to the normal queue-count badge for that tab.
+function flashBadge(tabId, text, color, ms = 1500) {
+    chrome.action.setBadgeText({ text, tabId }).catch(() => {});
+    chrome.action.setBadgeBackgroundColor({ color, tabId }).catch(() => {});
+    setTimeout(() => updateQueueBadge(tabId), ms);
 }
 
 chrome.tabs.onRemoved.addListener((tabId) => {
@@ -314,6 +383,18 @@ async function sendItems({ tabId, deviceId, options }) {
             await api.addLinks(deviceId, query);
         }
         await clearTabQueue(tabId);
+
+        // Remember the device + these two options for next time (auto-send and
+        // the panel's pre-fill both read this). packageName/downloadPassword are
+        // intentionally never remembered - those vary per item, not globally.
+        const settings = await loadSettings();
+        settings.defaultDeviceId = deviceId;
+        settings.rememberedOptions = {
+            autostart: !!options.autostart,
+            destinationFolder: options.destinationFolder || '',
+        };
+        await saveSettings(settings);
+
         console.log('[JDrop] sent', items.length, 'item(s) OK');
         return { ok: true, count: items.length };
     } catch (e) {
@@ -380,6 +461,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 settings.theme = msg.theme;
                 await saveSettings(settings);
                 sendResponse({ ok: true });
+                break;
+            }
+            case 'settings:get': {
+                sendResponse({ settings: await loadSettings() });
+                break;
+            }
+            case 'settings:setAutoSend': {
+                const settings = await loadSettings();
+                settings.autoSend = !!msg.value;
+                await saveSettings(settings);
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'panel:getDefaults': {
+                const settings = await loadSettings();
+                sendResponse({
+                    defaultDeviceId: settings.defaultDeviceId,
+                    rememberedOptions: settings.rememberedOptions || {},
+                });
                 break;
             }
             case 'cnl-captured': {
