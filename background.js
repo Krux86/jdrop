@@ -470,8 +470,16 @@ async function openCaptchaTab(api, deviceId, job) {
         console.error('[JDrop] could not fetch/parse CAPTCHA details for job', job.id, e);
         return;
     }
+    await createCaptchaTab(deviceId, job.id, details);
+}
+
+// The actual tab-creation tail, split out from openCaptchaTab so a debug
+// path can drive it with a hand-built `details` object (skipping the real
+// API call) to test CSP-stripping and the rest of the real tab lifecycle
+// without a live pending CAPTCHA job.
+async function createCaptchaTab(deviceId, jobId, details) {
     if (!details.targetUrl) {
-        console.error('[JDrop] CAPTCHA job', job.id, 'has no target URL to open (see UNVERIFIED note on parseRawTokenResponse)');
+        console.error('[JDrop] CAPTCHA job', jobId, 'has no target URL to open (see UNVERIFIED note on parseRawTokenResponse)');
         return;
     }
 
@@ -480,12 +488,12 @@ async function openCaptchaTab(api, deviceId, job) {
     try {
         tab = await chrome.tabs.create({ url });
     } catch (e) {
-        console.error('[JDrop] could not open CAPTCHA tab for job', job.id, e);
+        console.error('[JDrop] could not open CAPTCHA tab for job', jobId, e);
         return;
     }
     const cspRuleId = await addCaptchaCspStrippingRule(tab.id);
-    activeCaptchaTabs[tab.id] = { jobId: job.id, deviceId, cspRuleId };
-    console.log('[JDrop] opened CAPTCHA tab', tab.id, 'for job', job.id, details.library);
+    activeCaptchaTabs[tab.id] = { jobId, deviceId, cspRuleId };
+    console.log('[JDrop] opened CAPTCHA tab', tab.id, 'for job', jobId, details.library);
 }
 
 // Shared by the 1-minute alarm and the popup's manual "check now" button.
@@ -770,6 +778,25 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                     console.error('[JDrop] captcha:execute failed:', e);
                     sendResponse({ ok: false, error: e.message });
                 }
+                break;
+            }
+            // TEMPORARY, test-only: drives the real createCaptchaTab() (tab
+            // creation, CSP-stripping rule, activeCaptchaTabs registration)
+            // with Google's public, non-domain-locked reCAPTCHA v2 test site
+            // key, so the CSP-strip and widget-solving path can be checked
+            // live without a real MyJDownloader account/pending job. Remove
+            // this case once that's confirmed.
+            case 'debug:testCaptchaTab': {
+                await createCaptchaTab('debug-device', 'debug-job-1', {
+                    hoster: 'example.com',
+                    siteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI',
+                    challengeType: 'recaptchav2',
+                    library: 'recaptcha-v2',
+                    enterprise: false,
+                    v3action: '',
+                    targetUrl: 'https://example.com/',
+                });
+                sendResponse({ ok: true });
                 break;
             }
             default:
