@@ -38,7 +38,7 @@ the Angular 1 / jQuery / RequireJS / CryptoJS stack. **No build step** and
 
   > **Not yet verified end-to-end.** The one API call this depends on for the
   > site key (`/captcha/get` with `format: "rawtoken"`) has an undocumented
-  > response shape - the code's best-effort guess at its fields is marked
+  > response shape. The code's best-effort guess at its fields is marked
   > `UNVERIFIED` in `lib/captcha.js`, `lib/api.js`, and the solver content
   > script. Everything else (polling, job de-duplication, the solve/skip API
   > calls) is unit-tested against a protocol-verifying fake server; the
@@ -46,7 +46,7 @@ the Angular 1 / jQuery / RequireJS / CryptoJS stack. **No build step** and
   > CAPTCHA job before it can be trusted.
 - **Clipboard link observer**, off by default. When enabled (popup setting),
   copying a link (or a list of links) adds it to the same review panel used
-  for right-click and CNL - it never sends automatically, even if auto-send
+  for right-click and CNL. It never sends automatically, even if auto-send
   is also on, since a copy is far more incidental than an explicit click.
   Detects link-shaped selections at the moment of the native `copy` event
   rather than reading the OS clipboard, so it needs no extra permission.
