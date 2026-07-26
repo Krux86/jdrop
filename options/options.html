@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="options.css">
+    <title>JDrop Settings</title>
+</head>
+<body>
+    <header>
+        <h1>JDrop Settings</h1>
+    </header>
+
+    <section class="setting-row">
+        <label class="checkbox">
+            <input type="checkbox" id="opt-autosend">
+            Auto-send new links without confirmation
+        </label>
+        <p class="setting-hint">
+            When a link or Click'N'Load capture comes in, it's sent immediately to your
+            last-used device with your last-used options - the review panel won't open at all.
+            Off by default so you stay in control of what gets sent; turn this on once you
+            trust the defaults and just want things to go through without a click.
+        </p>
+    </section>
+
+    <section class="setting-row">
+        <label class="checkbox">
+            <input type="checkbox" id="opt-clipboard">
+            Watch clipboard for copied links
+        </label>
+        <p class="setting-hint">
+            When you copy a link, or a list of links (one per line), it's added to the
+            review panel automatically - the same panel used for right-click and CNL. This
+            always goes through the panel and is never sent automatically, even if
+            auto-send above is also on, since copying something is a much more incidental
+            action than an explicit click. Off by default. Detection happens at the moment
+            you press copy by checking what's selected on the page - it never reads your
+            system clipboard directly, so no extra permission is needed.
+        </p>
+    </section>
+
+    <p class="disclaimer">Unofficial · not affiliated with AppWork GmbH</p>
+
+    <script src="../lib/theme.js"></script>
+    <script src="options.js"></script>
+</body>
+</html>

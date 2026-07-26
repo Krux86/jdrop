@@ -1,0 +1,50 @@
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --fg: #1a1a1a;
+    --muted: #666;
+    --border: #dcdcdc;
+    --accent: #2f6fed;
+    --accent-fg: #ffffff;
+    --error: #c0392b;
+    --ok: #2e9e5b;
+}
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #1e1f22;
+        --fg: #eaeaea;
+        --muted: #9aa0a6;
+        --border: #3a3c40;
+        --accent: #4a86ff;
+        --error: #ff6b5e;
+        --ok: #46c07a;
+    }
+}
+:root[data-theme="light"] {
+    --bg: #ffffff; --fg: #1a1a1a; --muted: #666; --border: #dcdcdc;
+    --accent: #2f6fed; --accent-fg: #ffffff; --error: #c0392b; --ok: #2e9e5b;
+}
+:root[data-theme="dark"] {
+    --bg: #1e1f22; --fg: #eaeaea; --muted: #9aa0a6; --border: #3a3c40;
+    --accent: #4a86ff; --accent-fg: #ffffff; --error: #ff6b5e; --ok: #46c07a;
+}
+
+* { box-sizing: border-box; }
+body {
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 28px 24px;
+    font: 14px/1.6 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--fg);
+}
+header { margin-bottom: 8px; }
+h1 { font-size: 20px; margin: 0; }
+
+.checkbox { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 15px; font-weight: 600; color: var(--fg); }
+.checkbox input[type=checkbox] { width: auto; margin: 0; }
+
+.setting-row { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--border); }
+.setting-hint { font-size: 13px; color: var(--muted); margin: 8px 0 0; max-width: 46em; }
+
+.disclaimer { font-size: 11px; color: var(--muted); opacity: .7; margin: 32px 0 0; }
