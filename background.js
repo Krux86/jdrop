@@ -11,7 +11,9 @@ import {
     loadSession, saveSession, clearSession,
     loadSettings, saveSettings, DEFAULT_SETTINGS,
     loadQueue, saveQueue,
+    loadSeenCaptchaIds, saveSeenCaptchaIds,
 } from './lib/storage.js';
+import { diffNewJobs, addSeenIds, pruneSeenIds, parseRawTokenResponse, SKIP_TYPES } from './lib/captcha.js';
 
 // ---- API instance (rehydrated from storage on each worker wake) ----
 
@@ -173,6 +175,24 @@ chrome.tabs.onRemoved.addListener((tabId) => {
         return;
     }
     clearTabQueue(tabId, 'tab closed');
+
+    // CAPTCHA tab closed without solving/skipping through the UI (e.g. the
+    // user just closed it) - clean up the CSP rule and send a courtesy
+    // single-skip so the job doesn't sit stuck on JDownloader's side.
+    const info = activeCaptchaTabs[tabId];
+    if (info) {
+        delete activeCaptchaTabs[tabId];
+        removeCaptchaCspStrippingRule(info.cspRuleId);
+        (async () => {
+            try {
+                const api = await getApi();
+                await api.skipCaptcha(info.deviceId, info.jobId, SKIP_TYPES.SINGLE);
+                console.log('[JDrop] CAPTCHA tab', tabId, 'closed, sent skip(single) for job', info.jobId);
+            } catch (e) {
+                console.error('[JDrop] could not send skip after CAPTCHA tab close for job', info.jobId, e);
+            }
+        })();
+    }
 });
 
 // ---- in-page panel ----
@@ -385,6 +405,151 @@ async function sendItems({ tabId, deviceId, options }) {
     }
 }
 
+// ---- CAPTCHA solving ----
+//
+// UNVERIFIED end-to-end: the /captcha/get "rawtoken" response shape that
+// parseRawTokenResponse (lib/captcha.js) depends on has never been confirmed
+// against a real pending job (see lib/api.js's getCaptchaRawToken). Polling,
+// job de-duplication, and the solve/skip API calls are independently correct
+// and tested; the widget-rendering path built on top of that parser is not
+// trustworthy until checked against a live account.
+
+const activeCaptchaTabs = {}; // tabId -> { jobId, deviceId, cspRuleId }
+let nextCspRuleId = 20000; // CNL rules use 1-6; keep well clear of those.
+
+async function addCaptchaCspStrippingRule(tabId) {
+    const ruleId = nextCspRuleId++;
+    try {
+        await chrome.declarativeNetRequest.updateSessionRules({
+            addRules: [{
+                id: ruleId,
+                priority: 1,
+                action: {
+                    type: 'modifyHeaders',
+                    responseHeaders: [
+                        { header: 'Content-Security-Policy', operation: 'remove' },
+                        { header: 'Content-Security-Policy-Report-Only', operation: 'remove' },
+                    ],
+                },
+                condition: { tabIds: [tabId], resourceTypes: ['main_frame', 'sub_frame', 'script'] },
+            }],
+        });
+        return ruleId;
+    } catch (e) {
+        console.error('[JDrop] addCaptchaCspStrippingRule failed:', e);
+        return null;
+    }
+}
+
+async function removeCaptchaCspStrippingRule(ruleId) {
+    if (ruleId == null) return;
+    try {
+        await chrome.declarativeNetRequest.updateSessionRules({ removeRuleIds: [ruleId] });
+    } catch (e) {
+        console.error('[JDrop] removeCaptchaCspStrippingRule failed:', e);
+    }
+}
+
+// Opens a real browser tab on the CAPTCHA's actual target page (site keys are
+// domain-locked, so the widget must render there, not on an extension page),
+// with a URL fragment marker the content script uses to find its job. Strips
+// CSP on that tab so an injected recaptcha/hcaptcha script tag isn't blocked.
+async function openCaptchaTab(api, deviceId, job) {
+    let details;
+    try {
+        const raw = await api.getCaptchaRawToken(deviceId, job.id);
+        // UNVERIFIED shape (see lib/captcha.js header) - log it raw every time
+        // so the first real job tells us what it actually looks like, instead
+        // of only finding out via a parse failure.
+        console.log('[JDrop] raw CAPTCHA rawtoken response for job', job.id, JSON.stringify(raw));
+        details = parseRawTokenResponse(raw, job);
+    } catch (e) {
+        console.error('[JDrop] could not fetch/parse CAPTCHA details for job', job.id, e);
+        return;
+    }
+    if (!details.targetUrl) {
+        console.error('[JDrop] CAPTCHA job', job.id, 'has no target URL to open (see UNVERIFIED note on parseRawTokenResponse)');
+        return;
+    }
+
+    const url = details.targetUrl + '#jdrop-captcha=' + encodeURIComponent(JSON.stringify({ deviceId, ...details }));
+    let tab;
+    try {
+        tab = await chrome.tabs.create({ url });
+    } catch (e) {
+        console.error('[JDrop] could not open CAPTCHA tab for job', job.id, e);
+        return;
+    }
+    const cspRuleId = await addCaptchaCspStrippingRule(tab.id);
+    activeCaptchaTabs[tab.id] = { jobId: job.id, deviceId, cspRuleId };
+    console.log('[JDrop] opened CAPTCHA tab', tab.id, 'for job', job.id, details.library);
+}
+
+// Shared by the 1-minute alarm and the popup's manual "check now" button.
+// Always logs something on the way through - a silent "found nothing" looks
+// identical to a silent failure, which is exactly the bug this project's
+// whole CAPTCHA investigation kept running into elsewhere. Don't repeat it.
+async function pollCaptchas() {
+    const api = await getApi();
+    if (!api.isConnected()) {
+        console.log('[JDrop] pollCaptchas: not connected, skipping');
+        return;
+    }
+    let devices;
+    try {
+        devices = await api.listDevices();
+    } catch (e) {
+        console.error('[JDrop] pollCaptchas: listDevices failed:', e);
+        return;
+    }
+    if (devices.length === 0) {
+        console.log('[JDrop] pollCaptchas: no devices online');
+        return;
+    }
+
+    for (const device of devices) {
+        let jobs;
+        try {
+            jobs = await api.listCaptchaJobs(device.id);
+        } catch (e) {
+            console.error('[JDrop] pollCaptchas: listCaptchaJobs failed for', device.id, e);
+            continue;
+        }
+        if (!Array.isArray(jobs) || jobs.length === 0) {
+            console.log('[JDrop] pollCaptchas: no pending CAPTCHAs on', device.id);
+            continue;
+        }
+
+        const seen = await loadSeenCaptchaIds();
+        const fresh = diffNewJobs(jobs, seen);
+        if (fresh.length === 0) {
+            console.log('[JDrop] pollCaptchas:', jobs.length, 'pending CAPTCHA(s) on', device.id, '- all already seen');
+            continue;
+        }
+
+        console.log('[JDrop] pollCaptchas: found', fresh.length, 'new CAPTCHA job(s) on', device.id);
+        for (const job of fresh) await openCaptchaTab(api, device.id, job);
+
+        await saveSeenCaptchaIds(pruneSeenIds(addSeenIds(seen, fresh.map((j) => j.id)), jobs));
+    }
+}
+
+chrome.alarms.create('captcha-poll', { periodInMinutes: 1 });
+chrome.alarms.onAlarm.addListener((alarm) => {
+    if (alarm.name === 'captcha-poll') pollCaptchas().catch((e) => console.error('[JDrop] pollCaptchas crashed:', e));
+});
+
+async function finishCaptchaTab(tabId, { close = true } = {}) {
+    const info = activeCaptchaTabs[tabId];
+    if (!info) return;
+    delete activeCaptchaTabs[tabId];
+    await removeCaptchaCspStrippingRule(info.cspRuleId);
+    if (close) {
+        setTimeout(() => chrome.tabs.remove(tabId).catch(() => {}), 2000);
+    }
+    return info;
+}
+
 // ---- message routing ----
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -522,6 +687,62 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
             }
             case 'panel:send': {
                 sendResponse(await sendItems(msg));
+                break;
+            }
+            case 'captcha:solved': {
+                const info = sender.tab && activeCaptchaTabs[sender.tab.id];
+                if (!info) { sendResponse({ ok: false, error: 'no_active_captcha_tab' }); break; }
+                const api = await getApi();
+                try {
+                    await api.solveCaptcha(info.deviceId, info.jobId, msg.token);
+                    console.log('[JDrop] CAPTCHA', info.jobId, 'solved and submitted');
+                    await finishCaptchaTab(sender.tab.id);
+                    sendResponse({ ok: true });
+                } catch (e) {
+                    console.error('[JDrop] solveCaptcha failed for job', info.jobId, e);
+                    sendResponse({ ok: false, error: e.message });
+                }
+                break;
+            }
+            case 'captcha:skip': {
+                const info = sender.tab && activeCaptchaTabs[sender.tab.id];
+                if (!info) { sendResponse({ ok: false, error: 'no_active_captcha_tab' }); break; }
+                const api = await getApi();
+                try {
+                    await api.skipCaptcha(info.deviceId, info.jobId, msg.skipType);
+                    console.log('[JDrop] CAPTCHA', info.jobId, 'skipped:', msg.skipType);
+                    await finishCaptchaTab(sender.tab.id);
+                    sendResponse({ ok: true });
+                } catch (e) {
+                    console.error('[JDrop] skipCaptcha failed for job', info.jobId, e);
+                    sendResponse({ ok: false, error: e.message });
+                }
+                break;
+            }
+            case 'captcha:execute': {
+                // v3/invisible (and Enterprise) CAPTCHAs need an explicit
+                // grecaptcha.execute() call in the page's MAIN world - the
+                // isolated-world content script can't reach `grecaptcha` itself.
+                if (!sender.tab) { sendResponse({ ok: false, error: 'no_sender_tab' }); break; }
+                try {
+                    await chrome.scripting.executeScript({
+                        target: { tabId: sender.tab.id },
+                        world: 'MAIN',
+                        args: [msg.siteKey, msg.v3action || '', !!msg.enterprise],
+                        func: (siteKey, v3action, enterprise) => {
+                            const g = enterprise ? (window.grecaptcha && window.grecaptcha.enterprise) : window.grecaptcha;
+                            if (!g) return;
+                            g.ready(() => {
+                                const opts = v3action ? { action: v3action } : {};
+                                g.execute(siteKey, opts);
+                            });
+                        },
+                    });
+                    sendResponse({ ok: true });
+                } catch (e) {
+                    console.error('[JDrop] captcha:execute failed:', e);
+                    sendResponse({ ok: false, error: e.message });
+                }
                 break;
             }
             default:

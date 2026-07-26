@@ -31,9 +31,24 @@ the Angular 1 / jQuery / RequireJS / CryptoJS stack. **No build step** and
   a `dummycnl.jdownloader.org` URL that JDownloader decrypts locally.
 - An in-page panel to pick the target device and options (package name,
   download password, destination folder, autostart).
+- **CAPTCHA solving** for reCAPTCHA v2/v3/Enterprise and hCaptcha: polls
+  connected devices every minute and opens a tab on the real hoster page to
+  solve it, since site keys are domain-locked and won't render from an
+  extension page.
+
+  > **Not yet verified end-to-end.** The one API call this depends on for the
+  > site key (`/captcha/get` with `format: "rawtoken"`) has an undocumented
+  > response shape - the code's best-effort guess at its fields is marked
+  > `UNVERIFIED` in `lib/captcha.js`, `lib/api.js`, and the solver content
+  > script. Everything else (polling, job de-duplication, the solve/skip API
+  > calls) is unit-tested against a protocol-verifying fake server; the
+  > widget-rendering step itself needs confirming against a real pending
+  > CAPTCHA job before it can be trusted.
 
 Not included yet (deliberately — easy to add later thanks to the module split):
-CAPTCHA solving, clipboard observer, autograbber.
+clipboard observer, autograbber, and the many hoster-specific CAPTCHA types
+JDownloader handles itself outside a browser (KeyCaptcha, GeeTest, SolveMedia,
+and similar) - those never route through a browser tab in the first place.
 
 ## Install (unpacked)
 
@@ -85,9 +100,10 @@ not just shaped right.
 | `lib/crypto.js` | Web Crypto primitives + MyJD token derivation (pure, tested) |
 | `lib/api.js` | Cloud API client: connect, listDevices, addLinks (pure, tested) |
 | `lib/cnl.js` | Click'N'Load parsing + dummycnl encoding (pure, tested) |
+| `lib/captcha.js` | CAPTCHA job de-duplication, skip-type validation, rawtoken parsing (pure, tested; rawtoken parsing is UNVERIFIED, see above) |
 | `lib/storage.js` | `chrome.storage` wrappers |
-| `background.js` | Service worker: context menu, CNL faking, queue, routing |
-| `content/` | CNL interceptor (MAIN + bridge) and the panel host |
+| `background.js` | Service worker: context menu, CNL faking, queue, CAPTCHA polling, routing |
+| `content/` | CNL interceptor (MAIN + bridge), the panel host, and the CAPTCHA solver |
 | `popup/`, `panel/` | The two UIs |
 | `tests/` | `node --test` suites |
 

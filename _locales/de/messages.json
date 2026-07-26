@@ -1,6 +1,6 @@
 {
   "extension_description": {
-    "message": "Links und Click'N'Load über die MyJDownloader-Cloud an deinen JDownloader senden — funktioniert auch mit entferntem/Docker-JDownloader.",
+    "message": "Links und Click'N'Load über die MyJDownloader-Cloud an deinen JDownloader senden und Captchas für ihn lösen — funktioniert auch mit entferntem/Docker-JDownloader.",
     "description": "Beschreibung der Erweiterung in der Erweiterungsverwaltung des Browsers."
   }
 }
