@@ -799,25 +799,6 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 }
                 break;
             }
-            // TEMPORARY, test-only: drives the real createCaptchaTab() (tab
-            // creation, CSP-stripping rule, activeCaptchaTabs registration)
-            // with Google's public, non-domain-locked reCAPTCHA v2 test site
-            // key, so the CSP-strip and widget-solving path can be checked
-            // live without a real MyJDownloader account/pending job. Remove
-            // this case once that's confirmed.
-            case 'debug:testCaptchaTab': {
-                await createCaptchaTab('debug-device', 'debug-job-1', {
-                    hoster: 'example.com',
-                    siteKey: '6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI',
-                    challengeType: 'recaptchav2',
-                    library: 'recaptcha-v2',
-                    enterprise: false,
-                    v3action: '',
-                    targetUrl: 'https://example.com/',
-                });
-                sendResponse({ ok: true });
-                break;
-            }
             default:
                 sendResponse({ ok: false, error: 'unknown_action' });
         }
