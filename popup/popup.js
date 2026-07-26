@@ -124,11 +124,22 @@ async function initAutoSendSetting() {
     });
 }
 
+// Clipboard observer setting
+async function initClipboardObserverSetting() {
+    const checkbox = $('opt-clipboard');
+    const res = await send({ type: 'settings:get' });
+    checkbox.checked = !!(res && res.settings && res.settings.clipboardObserver);
+    checkbox.addEventListener('change', () => {
+        send({ type: 'settings:setClipboardObserver', value: checkbox.checked });
+    });
+}
+
 // Initial state
 (async () => {
     initTheme();
     initRememberEmail();
     initAutoSendSetting();
+    initClipboardObserverSetting();
     const status = await send({ type: 'popup:status' });
     if (status && status.connected) {
         showConnected(status.email, null);

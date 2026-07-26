@@ -47,9 +47,11 @@ function renderItems(items) {
     for (const it of items) {
         const li = document.createElement('li');
 
+        const tagClass = it.type === 'cnl' ? 'cnl' : it.type === 'clipboard' ? 'clipboard' : '';
+        const tagText = it.type === 'cnl' ? 'CNL' : it.type === 'clipboard' ? 'clipboard' : 'link';
         const tag = document.createElement('span');
-        tag.className = 'tag' + (it.type === 'cnl' ? ' cnl' : '');
-        tag.textContent = it.type === 'cnl' ? 'CNL' : 'link';
+        tag.className = 'tag' + (tagClass ? ' ' + tagClass : '');
+        tag.textContent = tagText;
 
         const title = document.createElement('span');
         title.className = 'title';

@@ -70,6 +70,12 @@
       "js": ["content/captcha-solver.js"],
       "run_at": "document_start",
       "all_frames": false
+    },
+    {
+      "matches": ["*://*/*"],
+      "js": ["content/clipboard-observer.js"],
+      "run_at": "document_start",
+      "all_frames": true
     }
   ],
   "web_accessible_resources": [

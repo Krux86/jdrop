@@ -104,6 +104,7 @@ h1 { font-size: 14px; margin: 0; }
     color: var(--muted);
 }
 .items .tag.cnl { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
+.items .tag.clipboard { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
 .items .title {
     flex: 1;
     overflow: hidden;

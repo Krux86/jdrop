@@ -44,11 +44,17 @@ the Angular 1 / jQuery / RequireJS / CryptoJS stack. **No build step** and
   > calls) is unit-tested against a protocol-verifying fake server; the
   > widget-rendering step itself needs confirming against a real pending
   > CAPTCHA job before it can be trusted.
+- **Clipboard link observer**, off by default. When enabled (popup setting),
+  copying a link (or a list of links) adds it to the same review panel used
+  for right-click and CNL - it never sends automatically, even if auto-send
+  is also on, since a copy is far more incidental than an explicit click.
+  Detects link-shaped selections at the moment of the native `copy` event
+  rather than reading the OS clipboard, so it needs no extra permission.
 
 Not included yet (deliberately — easy to add later thanks to the module split):
-clipboard observer, autograbber, and the many hoster-specific CAPTCHA types
-JDownloader handles itself outside a browser (KeyCaptcha, GeeTest, SolveMedia,
-and similar) - those never route through a browser tab in the first place.
+autograbber, and the many hoster-specific CAPTCHA types JDownloader handles
+itself outside a browser (KeyCaptcha, GeeTest, SolveMedia, and similar) -
+those never route through a browser tab in the first place.
 
 ## Install (unpacked)
 
@@ -101,9 +107,10 @@ not just shaped right.
 | `lib/api.js` | Cloud API client: connect, listDevices, addLinks (pure, tested) |
 | `lib/cnl.js` | Click'N'Load parsing + dummycnl encoding (pure, tested) |
 | `lib/captcha.js` | CAPTCHA job de-duplication, skip-type validation, rawtoken parsing (pure, tested; rawtoken parsing is UNVERIFIED, see above) |
+| `lib/clipboard.js` | Clipboard-observer URL detection (pure, tested) |
 | `lib/storage.js` | `chrome.storage` wrappers |
 | `background.js` | Service worker: context menu, CNL faking, queue, CAPTCHA polling, routing |
-| `content/` | CNL interceptor (MAIN + bridge), the panel host, and the CAPTCHA solver |
+| `content/` | CNL interceptor (MAIN + bridge), the panel host, the CAPTCHA solver, and the clipboard observer |
 | `popup/`, `panel/` | The two UIs |
 | `tests/` | `node --test` suites |
 

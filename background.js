@@ -80,12 +80,15 @@ chrome.commands.onCommand.addListener(async (command) => {
 
 // ---- per-tab request queue ----
 
-async function enqueue(tab, item, present = 'inpage') {
+async function enqueue(tab, item, present = 'inpage', { skipAutoSend = false } = {}) {
     // Auto-send (opt-in, off by default): skip the panel entirely and send
     // straight to the remembered device with the remembered options. Falls
     // through to the normal panel flow if not connected, no remembered device
     // yet, or the send itself fails - so the user always has a way to recover.
-    if (await tryAutoSend(tab, item)) return;
+    // skipAutoSend forces the review panel regardless of that setting - used
+    // by the clipboard observer, since a copy is far more incidental than an
+    // explicit right-click or CNL click and should never send silently.
+    if (!skipAutoSend && await tryAutoSend(tab, item)) return;
 
     const queue = await loadQueue();
     const key = String(tab.id);
@@ -620,6 +623,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                 sendResponse({ ok: true });
                 break;
             }
+            case 'settings:setClipboardObserver': {
+                const settings = await loadSettings();
+                settings.clipboardObserver = !!msg.value;
+                await saveSettings(settings);
+                sendResponse({ ok: true });
+                break;
+            }
             case 'settings:setRememberedEmail': {
                 const settings = await loadSettings();
                 settings.rememberedEmail = msg.value || '';
@@ -646,6 +656,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
                         content: { formData: msg.formData, sourceUrl: msg.sourceUrl || tab.url },
                         sourceUrl: tab.url,
                     }, 'window');
+                }
+                sendResponse({ ok: true });
+                break;
+            }
+            case 'clipboard-captured': {
+                // content/clipboard-observer.js already checked the
+                // clipboardObserver setting and that the selection was
+                // URL-shaped; skipAutoSend so a copy never sends silently.
+                const tab = sender.tab;
+                if (tab) {
+                    const lines = msg.links.split('\n');
+                    await enqueue(tab, {
+                        type: 'clipboard',
+                        title: lines[0] + (lines.length > 1 ? ' (+' + (lines.length - 1) + ' more)' : ''),
+                        content: msg.links,
+                        sourceUrl: msg.sourceUrl || tab.url,
+                    }, 'inpage', { skipAutoSend: true });
                 }
                 sendResponse({ ok: true });
                 break;
