@@ -486,13 +486,19 @@ async function createCaptchaTab(deviceId, jobId, details) {
     const url = details.targetUrl + '#jdrop-captcha=' + encodeURIComponent(JSON.stringify({ deviceId, ...details }));
     let tab;
     try {
-        tab = await chrome.tabs.create({ url });
+        // Create the tab blank first so we have its id, and can strip CSP for
+        // it, before the real navigation (and the CSP header that comes with
+        // it) happens. Creating it with the target url directly would start
+        // that navigation immediately, too early for a rule keyed on tab.id
+        // to apply to it.
+        tab = await chrome.tabs.create({ url: 'about:blank' });
     } catch (e) {
         console.error('[JDrop] could not open CAPTCHA tab for job', jobId, e);
         return;
     }
     const cspRuleId = await addCaptchaCspStrippingRule(tab.id);
     activeCaptchaTabs[tab.id] = { jobId, deviceId, cspRuleId };
+    await chrome.tabs.update(tab.id, { url });
     console.log('[JDrop] opened CAPTCHA tab', tab.id, 'for job', jobId, details.library);
 }
 
