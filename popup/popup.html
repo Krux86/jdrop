@@ -9,10 +9,7 @@
 <body>
     <header>
         <h1>JDrop</h1>
-        <div class="header-right">
-            <span class="badge" id="status-badge">…</span>
-            <button id="options-btn" class="icon" title="Settings" aria-label="Settings">⚙</button>
-        </div>
+        <span class="badge" id="status-badge">…</span>
     </header>
 
     <!-- Login view -->
@@ -44,6 +41,22 @@
         <div class="row">
             <button id="refresh-btn" class="secondary">Refresh</button>
             <button id="logout-btn" class="secondary">Log out</button>
+        </div>
+
+        <div class="setting-row">
+            <label class="checkbox">
+                <input type="checkbox" id="opt-autosend">
+                Auto-send new links without confirmation
+            </label>
+            <p class="setting-hint">Sends immediately to your last-used device and options - the confirmation panel won't open. Off by default so you stay in control of what gets sent.</p>
+        </div>
+
+        <div class="setting-row">
+            <label class="checkbox">
+                <input type="checkbox" id="opt-clipboard">
+                Watch clipboard for copied links
+            </label>
+            <p class="setting-hint">When you copy a link (or a list of links), it's added to the review panel - never sent automatically, even with auto-send on. Off by default.</p>
         </div>
     </section>
 

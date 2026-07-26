@@ -58,18 +58,7 @@ header {
     justify-content: space-between;
     margin-bottom: 12px;
 }
-.header-right { display: flex; align-items: center; gap: 8px; }
 h1 { font-size: 16px; margin: 0; }
-button.icon {
-    padding: 2px 6px;
-    background: transparent;
-    color: var(--muted);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    font-size: 13px;
-    line-height: 1.4;
-}
-button.icon:hover { color: var(--fg); border-color: var(--muted); }
 h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
 .badge {
     font-size: 11px;
@@ -128,6 +117,8 @@ button.secondary { background: transparent; color: var(--fg); border: 1px solid 
 .checkbox { display: flex; align-items: center; gap: 6px; margin: 0; font-size: 13px; color: var(--fg); }
 .checkbox input[type=checkbox] { display: inline; width: auto; margin: 0; }
 .checkbox.remember-email { margin: 2px 0 12px; }
+.setting-row { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.setting-hint { font-size: 11px; color: var(--muted); margin: 6px 0 0; }
 .signup-hint { font-size: 12px; color: var(--muted); margin: 10px 0 0; text-align: center; }
 .signup-hint a { color: var(--accent); text-decoration: none; font-weight: 600; }
 .signup-hint a:hover { text-decoration: underline; }

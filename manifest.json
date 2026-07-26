@@ -22,10 +22,6 @@
     "service_worker": "background.js",
     "type": "module"
   },
-  "options_ui": {
-    "page": "options/options.html",
-    "open_in_tab": true
-  },
   "commands": {
     "send-current-tab": {
       "suggested_key": {
