@@ -418,12 +418,25 @@ async function sendItems({ tabId, deviceId, options }) {
 // trustworthy until checked against a live account.
 
 const activeCaptchaTabs = {}; // tabId -> { jobId, deviceId, cspRuleId }
-let nextCspRuleId = 20000; // CNL rules use 1-6; keep well clear of those.
+
+// Rule id is derived from the tab id itself (CNL rules use fixed ids 1-6,
+// this stays well clear of those) rather than an incrementing counter. A
+// counter only lives in the service worker's memory, but session
+// declarativeNetRequest rules survive a worker restart - after a restart a
+// fresh counter starting over collides with a still-registered rule from
+// before. Deriving the id from the tab id is both collision-free (tab ids
+// are unique) and naturally idempotent for the same tab.
+function captchaCspRuleId(tabId) {
+    return 20000 + tabId;
+}
 
 async function addCaptchaCspStrippingRule(tabId) {
-    const ruleId = nextCspRuleId++;
+    const ruleId = captchaCspRuleId(tabId);
     try {
         await chrome.declarativeNetRequest.updateSessionRules({
+            // removeRuleIds first in case a stale rule for this id survived
+            // an earlier service worker lifetime without being cleaned up.
+            removeRuleIds: [ruleId],
             addRules: [{
                 id: ruleId,
                 priority: 1,
