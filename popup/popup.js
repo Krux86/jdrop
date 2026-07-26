@@ -92,8 +92,11 @@ $('logout-btn').addEventListener('click', async () => {
 $('refresh-btn').addEventListener('click', refreshDevices);
 
 $('settings-btn').addEventListener('click', () => {
-    connectedView.hidden = true;
-    settingsView.hidden = false;
+    // Toggle: pressing it again while already in settings goes back, same as
+    // the back button, so there are two ways in and both ways out.
+    const enteringSettings = settingsView.hidden;
+    connectedView.hidden = enteringSettings;
+    settingsView.hidden = !enteringSettings;
 });
 
 $('settings-back-btn').addEventListener('click', () => {
