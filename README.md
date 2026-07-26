@@ -41,9 +41,17 @@ the Angular 1 / jQuery / RequireJS / CryptoJS stack. **No build step** and
   > response shape. The code's best-effort guess at its fields is marked
   > `UNVERIFIED` in `lib/captcha.js`, `lib/api.js`, and the solver content
   > script. Everything else (polling, job de-duplication, the solve/skip API
-  > calls) is unit-tested against a protocol-verifying fake server; the
-  > widget-rendering step itself needs confirming against a real pending
-  > CAPTCHA job before it can be trusted.
+  > calls) is unit-tested against a protocol-verifying fake server, and the
+  > tab lifecycle (creation, CSP stripping, cleanup) has been checked live
+  > against a real tab. What's still unconfirmed: an actual reCAPTCHA/
+  > hCaptcha widget rendering and being solved. A manual test against
+  > Google's public test site key opened a real tab with CSP correctly
+  > stripped, but the script still didn't load, for a reason not yet
+  > identified (ruled out so far: Brave Shields per-site and its global
+  > fingerprinting-blocking setting, other installed extensions, and the
+  > test page's own CSP - it sends none). Needs a real pending CAPTCHA job,
+  > or someone who can reproduce and debug the same test further, to move
+  > past this.
 - **Clipboard link observer**, off by default. When enabled (popup setting),
   copying a link (or a list of links) adds it to the same review panel used
   for right-click and CNL. It never sends automatically, even if auto-send
