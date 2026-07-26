@@ -71,10 +71,11 @@ are wide, so here's why:
 | Permission | Why it's needed |
 |------------|------------------|
 | `<all_urls>` + `webRequest` | Click'N'Load can be triggered from *any* hoster page, and the browser only lets an extension read a request's body (the encrypted CNL payload) if it has host access to the page that made it. Without this, CNL capture would silently fail on most sites. |
-| `declarativeNetRequest` | Fakes the local `jdcheck.js` / `crossdomain.xml` / `flash/add*` responses so hoster pages believe a local JDownloader answered — necessary since a real one usually isn't reachable (see "Why it exists"). |
-| `scripting` | Injects the in-page panel's content script into a tab on demand (context-menu "Send to JDownloader"). |
+| `declarativeNetRequest` | Fakes the local `jdcheck.js` / `crossdomain.xml` / `flash/add*` responses so hoster pages believe a local JDownloader answered, since a real one usually isn't reachable (see "Why it exists"). Also strips the CSP on a CAPTCHA-solving tab so an injected reCAPTCHA/hCaptcha script tag isn't blocked by the hoster page's own policy. |
+| `scripting` | Injects the in-page panel's content script into a tab on demand (context-menu "Send to JDownloader"), and runs `grecaptcha.execute()` in the page's main world for invisible v3/Enterprise CAPTCHAs. |
 | `contextMenus` | Adds the right-click "Send to JDownloader" entry. |
 | `storage` | Stores your (encrypted-token) session and settings locally — never your password, which is discarded right after deriving the login secrets. |
+| `alarms` | Polls connected devices for pending CAPTCHA jobs once a minute, since MV3 alarms can't fire more often than that. |
 
 Nothing here calls home anywhere except `api.jdownloader.org` (the official
 MyJDownloader cloud API) and whatever hoster page you're already on. Read
@@ -84,9 +85,11 @@ MyJDownloader cloud API) and whatever hoster page you're already on. Read
 ## Development
 
 This project was built with AI assistance ([Claude](https://claude.com/claude-code)),
-under human direction and review — the protocol implementation was verified against
-the official extension's source and a real MyJDownloader account before anything
-was considered done. See the tests below for how that verification is reproducible.
+under human direction and review. The core protocol (connect, listDevices, addLinks,
+CNL forwarding) was verified against the official extension's source and a real
+MyJDownloader account before being considered done. CAPTCHA solving is the one
+exception, flagged as unverified above and in the source itself. See the tests
+below for how the rest of the verification is reproducible.
 
 No build, no `npm install`. Tests use Node's built-in runner (Node ≥ 18):
 
@@ -104,7 +107,7 @@ not just shaped right.
 | Path | Responsibility |
 |------|----------------|
 | `lib/crypto.js` | Web Crypto primitives + MyJD token derivation (pure, tested) |
-| `lib/api.js` | Cloud API client: connect, listDevices, addLinks (pure, tested) |
+| `lib/api.js` | Cloud API client: connect, listDevices, addLinks, CAPTCHA calls (pure, tested) |
 | `lib/cnl.js` | Click'N'Load parsing + dummycnl encoding (pure, tested) |
 | `lib/captcha.js` | CAPTCHA job de-duplication, skip-type validation, rawtoken parsing (pure, tested; rawtoken parsing is UNVERIFIED, see above) |
 | `lib/clipboard.js` | Clipboard-observer URL detection (pure, tested) |
