@@ -5,11 +5,15 @@ const send = (msg) => chrome.runtime.sendMessage(msg);
 
 const loginView = $('login-view');
 const connectedView = $('connected-view');
+const settingsView = $('settings-view');
+const settingsBtn = $('settings-btn');
 const badge = $('status-badge');
 
 function showConnected(email, devices) {
     loginView.hidden = true;
+    settingsView.hidden = true;
     connectedView.hidden = false;
+    settingsBtn.hidden = false;
     badge.textContent = 'connected';
     badge.className = 'badge ok';
     $('account-email').textContent = email || '';
@@ -18,6 +22,8 @@ function showConnected(email, devices) {
 
 function showLogin() {
     connectedView.hidden = true;
+    settingsView.hidden = true;
+    settingsBtn.hidden = true;
     loginView.hidden = false;
     badge.textContent = 'signed out';
     badge.className = 'badge off';
@@ -84,6 +90,16 @@ $('logout-btn').addEventListener('click', async () => {
 });
 
 $('refresh-btn').addEventListener('click', refreshDevices);
+
+$('settings-btn').addEventListener('click', () => {
+    connectedView.hidden = true;
+    settingsView.hidden = false;
+});
+
+$('settings-back-btn').addEventListener('click', () => {
+    settingsView.hidden = true;
+    connectedView.hidden = false;
+});
 
 // Theme control
 async function initTheme() {

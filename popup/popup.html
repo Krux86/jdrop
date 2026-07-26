@@ -9,7 +9,10 @@
 <body>
     <header>
         <h1>JDrop</h1>
-        <span class="badge" id="status-badge">…</span>
+        <div class="header-right">
+            <span class="badge" id="status-badge">…</span>
+            <button id="settings-btn" class="icon" title="Settings" aria-label="Settings" hidden>⚙</button>
+        </div>
     </header>
 
     <!-- Login view -->
@@ -42,6 +45,11 @@
             <button id="refresh-btn" class="secondary">Refresh</button>
             <button id="logout-btn" class="secondary">Log out</button>
         </div>
+    </section>
+
+    <!-- Settings view -->
+    <section id="settings-view" hidden>
+        <button id="settings-back-btn" class="icon back-btn">← Back</button>
 
         <div class="setting-row">
             <label class="checkbox">
