@@ -60,8 +60,10 @@ function makeFakeServer() {
     const state = {
         valid: true,
         sessionToken: SESSION_TOKEN,
+        regainToken: REGAIN_TOKEN,
         serverToken: deriveToken(loginSecret, SESSION_TOKEN),
         deviceToken: deriveToken(deviceSecret, SESSION_TOKEN),
+        failNextServerCall: false,
     };
     const initialTokens = { serverToken: state.serverToken, deviceToken: state.deviceToken };
 
@@ -93,12 +95,21 @@ function makeFakeServer() {
         // --- reconnect (recovery path, works even while the session is invalid) ---
         if (path === '/my/reconnect') {
             assert.equal(signature, hmacHex(state.serverToken, signedQuery), 'reconnect signature mismatch');
+            // Parameter names are matched verbatim, so read them the way the
+            // real server does: a camelCase `regainToken` simply isn't found.
+            assert.equal(u.searchParams.get('sessiontoken'), state.sessionToken,
+                'reconnect: wrong or missing lower-case sessiontoken param');
+            assert.equal(u.searchParams.get('regaintoken'), state.regainToken,
+                'reconnect: wrong or missing lower-case regaintoken param');
             const newSession = 'ffeeddccbbaa00112233445566778899';
+            const newRegain = 'aabbccddeeff00112233445566778899';
             // Response is encrypted with the OLD server token (compute before rotating).
-            const resp = encrypt(state.serverToken, { rid, sessiontoken: newSession, regaintoken: 'aabbccddeeff00112233445566778899' });
+            const resp = encrypt(state.serverToken, { rid, sessiontoken: newSession, regaintoken: newRegain });
             state.serverToken = deriveToken(state.serverToken, newSession);
             state.deviceToken = deriveToken(deviceSecret, newSession);
             state.sessionToken = newSession;
+            // Single-use, like the real one: the old regain token is now dead.
+            state.regainToken = newRegain;
             state.valid = true;
             return ok(resp);
         }
@@ -132,6 +143,10 @@ function makeFakeServer() {
 
         // --- server call (POST /my/...) ---
         if (!state.valid) return fail(403, { src: 'test', type: 'TOKEN_INVALID' });
+        if (state.failNextServerCall) {
+            state.failNextServerCall = false;
+            return fail(500, { src: 'test', type: 'SERVER_ERROR' });
+        }
         assert.equal(signature, hmacHex(state.serverToken, signedQuery), 'server call signature mismatch');
         const reqBody = decrypt(state.serverToken, init.body);
         assert.equal(reqBody.url, signedQuery, 'server call: body.url should match signed query');
@@ -145,7 +160,15 @@ function makeFakeServer() {
         return fail(404, { src: 'test', type: 'UNKNOWN_ACTION' });
     }
 
-    return { fetchImpl, calls, tokens: initialTokens, expire: () => { state.valid = false; } };
+    return {
+        fetchImpl,
+        calls,
+        tokens: initialTokens,
+        expire: () => { state.valid = false; },
+        // One-shot failure for the next server call that gets past the session
+        // check - i.e. the retry that follows a successful reconnect.
+        failNextServerCall: () => { state.failNextServerCall = true; },
+    };
 }
 
 // ---- tests ----
@@ -238,6 +261,30 @@ test('an expired session (HTTP 403) transparently reconnects and retries', async
 
     // The reconnect endpoint was actually called.
     assert.ok(server.calls.some((c) => c.url.includes('/my/reconnect')));
+});
+
+test('a rotated regain token is persisted even when the retried call fails', async () => {
+    const server = makeFakeServer();
+    const api = new MyJDApi({ fetchImpl: server.fetchImpl });
+    await api.connect(EMAIL, PASSWORD);
+
+    const saved = [];
+    api.onSessionRefreshed = (s) => { saved.push({ ...s }); };
+
+    server.expire(); // first listDevices 403s, triggering the reconnect
+    server.failNextServerCall(); // ...and the retry right after it blows up
+
+    await assert.rejects(() => api.listDevices());
+
+    // The reconnect consumed the old regain token, so the new one has to reach
+    // storage regardless of the retry - otherwise the next expiry is stuck with
+    // a spent token and can only be resolved by signing in again.
+    assert.equal(saved.length, 1, 'the refreshed session must be persisted before the retry');
+    assert.notEqual(saved[0].regainToken, REGAIN_TOKEN);
+    assert.equal(saved[0].regainToken, api.session.regainToken);
+
+    // Proof that it is genuinely usable: a later call succeeds on the new token.
+    assert.deepEqual(await api.listDevices(), [DEVICE]);
 });
 
 test('reconnect fails cleanly when the session lacks a regain token', async () => {
