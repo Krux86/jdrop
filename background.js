@@ -261,17 +261,17 @@ chrome.windows.onRemoved.addListener((windowId) => {
 const CNL_RULE_IDS = [1, 2, 3, 4, 5, 6];
 const CNL_RESOURCE_TYPES = ['sub_frame', 'xmlhttprequest', 'script', 'ping', 'other', 'object', 'media', 'image'];
 
-function dataUrl(mime, content) {
-    return `data:${mime};charset=utf-8,` + encodeURIComponent(content);
-}
-
-const CNL_JDCHECK = 'var jdownloader = true;\nvar jdownloaderVersion = "9.9.9";';
-const CNL_CROSSDOMAIN = '<?xml version="1.0"?>\n<cross-domain-policy>\n  <allow-access-from domain="*"/>\n</cross-domain-policy>';
-
+// Redirect to real extension-hosted files (web_accessible_resources), not
+// data: URLs. Some hosters still load jdcheck.js the old way - injected via
+// document.write() as a parser-blocking cross-site <script> - and Chromium
+// flags a data: URL redirect for that specific pattern as net::ERR_UNSAFE_REDIRECT
+// and blocks it outright, silently breaking CNL on exactly those sites. A
+// chrome-extension:// resource is a real origin, not a synthesized URI, so
+// it doesn't hit that restriction.
 function cnlRules() {
-    const jd = { type: 'redirect', redirect: { url: dataUrl('text/javascript', CNL_JDCHECK) } };
-    const xml = { type: 'redirect', redirect: { url: dataUrl('text/xml', CNL_CROSSDOMAIN) } };
-    const ok = { type: 'redirect', redirect: { url: dataUrl('text/plain', 'success') } };
+    const jd = { type: 'redirect', redirect: { url: chrome.runtime.getURL('cnl-fake/jdcheck.js') } };
+    const xml = { type: 'redirect', redirect: { url: chrome.runtime.getURL('cnl-fake/crossdomain.xml') } };
+    const ok = { type: 'redirect', redirect: { url: chrome.runtime.getURL('cnl-fake/ok.txt') } };
     const cond = (filter) => ({ urlFilter: filter, resourceTypes: CNL_RESOURCE_TYPES });
     return [
         { id: 1, priority: 1, action: jd, condition: cond('*://localhost:9666/jdcheck.js*') },

@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "JDrop",
   "short_name": "JDrop",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "__MSG_extension_description__",
   "default_locale": "en",
   "icons": {
@@ -81,6 +81,10 @@
   "web_accessible_resources": [
     {
       "resources": ["panel/panel.html"],
+      "matches": ["*://*/*"]
+    },
+    {
+      "resources": ["cnl-fake/jdcheck.js", "cnl-fake/crossdomain.xml", "cnl-fake/ok.txt"],
       "matches": ["*://*/*"]
     }
   ]
